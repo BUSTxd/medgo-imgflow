@@ -5,7 +5,7 @@ import type { VFile } from '@/lib/notion';
  * Solo existe en Chrome y Edge; en el resto se usa el ZIP.
  */
 
-type DirectoryPicker = (options?: { mode?: 'read' | 'readwrite'; id?: string }) => Promise<FileSystemDirectoryHandle>;
+type DirectoryPicker = (options?: { mode?: 'read' | 'readwrite'; startIn?: 'downloads' }) => Promise<FileSystemDirectoryHandle>;
 
 export function canSaveToFolder() {
   return typeof window !== 'undefined' && 'showDirectoryPicker' in window;
@@ -36,7 +36,8 @@ export async function saveToFolder(
 
   let root: FileSystemDirectoryHandle;
   try {
-    root = await picker({ mode: 'readwrite', id: 'medgo-imgflow' });
+    // Siempre abre en Descargas (sin 'id', que haría recordar la última carpeta).
+    root = await picker({ mode: 'readwrite', startIn: 'downloads' });
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') return null;
     throw error;

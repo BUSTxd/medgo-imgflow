@@ -118,7 +118,14 @@ function Downloads({ result }: { result: PipelineResult }) {
       const savedTo = await saveToFolder(result.files, result.name.replace(/\.zip$/i, ''), (done, total) =>
         setProgress(`${done}/${total}`)
       );
-      if (savedTo) toast.success(`Guardado en ${savedTo}`);
+      if (savedTo) {
+        toast.success(`Guardado en ${savedTo}`);
+      } else {
+        // Si no eligió carpeta, todo va a Descargas como ZIP (el navegador bloquea
+        // muchas descargas sueltas seguidas).
+        downloadBlob(await zipFiles(result.files), result.name);
+        toast.info(`No elegiste carpeta: ${result.name} se descargó en Descargas`);
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo guardar en la carpeta');
     } finally {
