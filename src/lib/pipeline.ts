@@ -10,7 +10,6 @@ import {
   mimeFromPath,
   planRenames,
   rewriteHtml,
-  zipFiles,
   type InputBundle,
   type VFile,
 } from '@/lib/notion';
@@ -26,7 +25,7 @@ export const STAGES: Array<{ id: StageId; label: string; hint: string }> = [
   { id: 'upload', label: 'Subir', hint: 'Enviando a Cloudinary' },
   { id: 'convert', label: 'Convertir', hint: 'q_auto:low en Cloudinary' },
   { id: 'rewrite', label: 'Reescribir HTML', hint: 'Actualizando rutas' },
-  { id: 'pack', label: 'Empaquetar', hint: 'Armando el ZIP final' },
+  { id: 'pack', label: 'Empaquetar', hint: 'Preparando la descarga' },
 ];
 
 export const OUTPUT_FORMATS = ['avif', 'webp', 'jpg', 'jxl', 'png'] as const;
@@ -69,7 +68,9 @@ export interface HtmlReport {
 }
 
 export interface PipelineResult {
-  blob: Blob;
+  /** Archivos finales con su ruta; el ZIP se arma solo si se pide. */
+  files: VFile[];
+  /** Nombre del ZIP (el mismo del export original). */
   name: string;
   originalBytes: number;
   finalBytes: number;
@@ -263,14 +264,13 @@ export async function runPipeline(
     if (outputPath) emit({ type: 'image', id: image.id, patch: { outputPath } });
   });
 
-  const blob = await zipFiles(outputFiles);
   setStage('pack', { status: 'done', done: 1 });
 
   const cleanupError =
     cleanupFailures > 0 ? `${cleanupFailures} ${cleanupFailures === 1 ? 'copia quedó' : 'copias quedaron'} en la carpeta ${UPLOADS_FOLDER}/` : undefined;
 
   const result: PipelineResult = {
-    blob,
+    files: outputFiles,
     name: bundle.name,
     // Solo se comparan las imágenes que sí se convirtieron.
     originalBytes: images

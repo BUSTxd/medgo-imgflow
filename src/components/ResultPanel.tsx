@@ -1,11 +1,14 @@
 'use client';
 
+import { useState } from 'react';
 import { motion } from 'motion/react';
-import { AlertTriangle, Download, FileCode2, RotateCcw } from 'lucide-react';
+import { AlertTriangle, Download, FileArchive, FileCode2, FolderDown, Loader2, RotateCcw } from 'lucide-react';
+import { toast } from 'sonner';
 
 import AnimatedNumber from '@/components/AnimatedNumber';
 import type { PipelineResult } from '@/lib/pipeline';
-import { basename } from '@/lib/notion';
+import { basename, zipFiles } from '@/lib/notion';
+import { canSaveToFolder, saveToFolder } from '@/lib/save';
 import { downloadBlob, formatBytes } from '@/lib/util';
 
 interface ResultPanelProps {
@@ -70,15 +73,7 @@ export default function ResultPanel({ result, onReset }: ResultPanelProps) {
       {result.cleanupError && <Warning>No se pudieron borrar las copias temporales en Cloudinary: {result.cleanupError}</Warning>}
 
       <div className="space-y-2">
-        <button
-          type="button"
-          onClick={() => downloadBlob(result.blob, result.name)}
-          className="bg-gradient-brand flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 font-medium text-white shadow-lg shadow-accent/25 transition hover:brightness-110 active:scale-[0.98]"
-        >
-          <Download className="size-5" />
-          Descargar {result.name}
-        </button>
-        <p className="text-center font-mono text-xs text-muted">{formatBytes(result.blob.size)}</p>
+        <Downloads result={result} />
         <button
           type="button"
           onClick={onReset}
@@ -89,6 +84,78 @@ export default function ResultPanel({ result, onReset }: ResultPanelProps) {
         </button>
       </div>
     </motion.aside>
+  );
+}
+
+const primaryButton =
+  'bg-gradient-brand flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 font-medium text-white shadow-lg shadow-accent/25 transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60';
+const secondaryButton =
+  'flex w-full items-center justify-center gap-2 rounded-xl border border-accent/40 bg-accent/10 px-4 py-2.5 text-sm font-medium transition hover:border-accent hover:bg-accent/20 disabled:opacity-60';
+
+/**
+ * Un solo archivo → se descarga directo. Varios → ZIP o (en Chrome/Edge)
+ * guardado directo en una carpeta conservando la estructura.
+ */
+
+function Downloads({ result }: { result: PipelineResult }) {
+  const [busy, setBusy] = useState<'zip' | 'folder' | null>(null);
+  const [progress, setProgress] = useState('');
+  const totalBytes = result.files.reduce((sum, file) => sum + file.data.size, 0);
+  const single = result.files.length === 1 ? result.files[0] : null;
+
+  async function handleZip() {
+    setBusy('zip');
+    try {
+      downloadBlob(await zipFiles(result.files), result.name);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleFolder() {
+    setBusy('folder');
+    try {
+      const savedTo = await saveToFolder(result.files, result.name.replace(/\.zip$/i, ''), (done, total) =>
+        setProgress(`${done}/${total}`)
+      );
+      if (savedTo) toast.success(`Guardado en ${savedTo}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo guardar en la carpeta');
+    } finally {
+      setBusy(null);
+      setProgress('');
+    }
+  }
+
+  if (single) {
+    const filename = basename(single.path);
+    return (
+      <>
+        <button type="button" onClick={() => downloadBlob(single.data, filename)} className={primaryButton}>
+          <Download className="size-5 shrink-0" />
+          <span className="truncate">Descargar {filename}</span>
+        </button>
+        <p className="text-center font-mono text-xs text-muted">{formatBytes(single.data.size)}</p>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <button type="button" onClick={handleZip} disabled={busy !== null} className={primaryButton}>
+        {busy === 'zip' ? <Loader2 className="size-5 shrink-0 animate-spin" /> : <FileArchive className="size-5 shrink-0" />}
+        <span className="truncate">Descargar ZIP</span>
+      </button>
+      {canSaveToFolder() && (
+        <button type="button" onClick={handleFolder} disabled={busy !== null} className={secondaryButton}>
+          {busy === 'folder' ? <Loader2 className="size-4 animate-spin" /> : <FolderDown className="size-4" />}
+          {busy === 'folder' ? `Guardando ${progress}` : 'Guardar en carpeta'}
+        </button>
+      )}
+      <p className="text-center font-mono text-xs text-muted">
+        {result.files.length} archivos · {formatBytes(totalBytes)}
+      </p>
+    </>
   );
 }
 
