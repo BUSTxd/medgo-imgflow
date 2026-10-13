@@ -1,7 +1,8 @@
 import pLimit from 'p-limit';
 import { getCldImageUrl } from 'next-cloudinary';
 
-import { deleteUploads, uploadFile } from '@/lib/cloudinary';
+import { deleteByToken, uploadFile, UPLOADS_FOLDER } from '@/lib/cloudinary';
+import type { CloudinaryCredentials } from '@/lib/credentials';
 import {
   basename,
   isConvertibleImage,
@@ -95,6 +96,7 @@ function errorMessage(error: unknown) {
 export async function runPipeline(
   getBundle: () => Promise<InputBundle>,
   settings: Settings,
+  credentials: CloudinaryCredentials,
   emit: (event: PipelineEvent) => void
 ) {
   const stages = new Map<StageId, StageState>(
@@ -165,7 +167,7 @@ export async function runPipeline(
   const targetBytes = settings.targetKB * 1000;
 
   const converted = new Map<string, Blob>();
-  const publicIds: string[] = [];
+  let cleanupFailures = 0;
 
   await Promise.all(
     imageFiles.map(async (file, index) => {
@@ -194,15 +196,25 @@ export async function runPipeline(
         const output = await networkLimit(async () => {
           start('upload');
           update({ status: 'uploading' });
-          const upload = await withRetry(() => uploadFile(source, image.name));
-          publicIds.push(upload.public_id);
+          const upload = await withRetry(() => uploadFile(source, image.name, credentials));
           finish('upload');
 
           start('convert');
           update({ status: 'converting' });
-          // Misma transformación que imgto.xyz: f_<formato> + q_auto:low
-          const url = getCldImageUrl({ src: upload.public_id, format: settings.format, quality: 'auto:low' });
-          return withRetry(() => getFileBlob(url));
+
+          try {
+            // Misma transformación que imgto.xyz: f_<formato> + q_auto:low
+            const url = getCldImageUrl(
+              { src: upload.public_id, format: settings.format, quality: 'auto:low' },
+              { cloud: { cloudName: credentials.cloudName } }
+            );
+            return await withRetry(() => getFileBlob(url));
+          } finally {
+            // Borra la copia temporal en Cloudinary para no gastar cuota.
+            if (upload.delete_token) {
+              await deleteByToken(credentials.cloudName, upload.delete_token).catch(() => cleanupFailures++);
+            }
+          }
         });
 
         converted.set(file.path, output);
@@ -254,14 +266,8 @@ export async function runPipeline(
   const blob = await zipFiles(outputFiles);
   setStage('pack', { status: 'done', done: 1 });
 
-  // Borra las copias temporales de Cloudinary para no gastar cuota.
-
-  let cleanupError: string | undefined;
-  try {
-    await deleteUploads(publicIds);
-  } catch (error) {
-    cleanupError = errorMessage(error);
-  }
+  const cleanupError =
+    cleanupFailures > 0 ? `${cleanupFailures} ${cleanupFailures === 1 ? 'copia quedó' : 'copias quedaron'} en la carpeta ${UPLOADS_FOLDER}/` : undefined;
 
   const result: PipelineResult = {
     blob,

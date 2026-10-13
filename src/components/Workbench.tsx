@@ -3,14 +3,15 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { toast } from 'sonner';
-import { AlertTriangle, RotateCcw } from 'lucide-react';
+import { AlertTriangle, RotateCcw, Settings2 } from 'lucide-react';
 
+import CredentialsDialog from '@/components/CredentialsDialog';
 import Dropzone from '@/components/Dropzone';
 import ImageGrid from '@/components/ImageGrid';
 import PipelineFlow from '@/components/PipelineFlow';
 import ResultPanel from '@/components/ResultPanel';
 import SettingsPanel from '@/components/SettingsPanel';
-import { isCloudinaryConfigured } from '@/lib/cloudinary';
+import { useCredentials } from '@/lib/credentials';
 import type { InputBundle } from '@/lib/notion';
 import {
   DEFAULT_SETTINGS,
@@ -83,6 +84,8 @@ function loadSettings(): Settings {
 export default function Workbench() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const credentials = useCredentials();
+  const [editingCredentials, setEditingCredentials] = useState(false);
   const imagesRef = useRef<ImageItem[]>([]);
 
   // localStorage solo existe en el navegador: se lee después de hidratar.
@@ -107,8 +110,8 @@ export default function Workbench() {
   }
 
   async function handleBundle(getBundle: () => Promise<InputBundle>) {
-    if (!isCloudinaryConfigured) {
-      toast.error('Configura Cloudinary en .env.local antes de procesar.');
+    if (!credentials) {
+      setEditingCredentials(true);
       return;
     }
 
@@ -116,7 +119,7 @@ export default function Workbench() {
     dispatch({ type: 'start', format: settings.format });
 
     try {
-      const result = await runPipeline(getBundle, settings, (event) => dispatch({ type: 'event', event }));
+      const result = await runPipeline(getBundle, settings, credentials, (event) => dispatch({ type: 'event', event }));
       toast.success(`Listo: ${result.converted} imágenes en ${settings.format.toUpperCase()}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Algo salió mal';
@@ -137,18 +140,21 @@ export default function Workbench() {
   return (
     <MotionConfig reducedMotion="user">
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-20 sm:px-6">
-        <Header />
+        <Header
+          cloudName={credentials === undefined ? undefined : (credentials?.cloudName ?? null)}
+          onEditCredentials={() => setEditingCredentials(true)}
+        />
 
-        {!isCloudinaryConfigured && (
-          <p className="mb-6 flex items-start gap-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-            <span>
-              Falta configurar Cloudinary. Copia <code className="font-mono">.env.example</code> a{' '}
-              <code className="font-mono">.env.local</code>, rellena tus credenciales y reinicia{' '}
-              <code className="font-mono">npm run dev</code>.
-            </span>
-          </p>
-        )}
+        {/* Sin credenciales el diálogo es obligatorio (no se puede cerrar). */}
+        <AnimatePresence>
+          {(credentials === null || editingCredentials) && state.phase !== 'running' && (
+            <CredentialsDialog
+              key="credentials"
+              current={credentials ?? null}
+              onClose={credentials ? () => setEditingCredentials(false) : undefined}
+            />
+          )}
+        </AnimatePresence>
 
         <AnimatePresence mode="wait">
           {state.phase === 'idle' ? (
@@ -218,7 +224,7 @@ export default function Workbench() {
   );
 }
 
-function Header() {
+function Header({ cloudName, onEditCredentials }: { cloudName?: string | null; onEditCredentials: () => void }) {
   return (
     <header className="py-10 sm:py-14">
       <div className="mb-8 flex items-center justify-between gap-4">
@@ -230,14 +236,20 @@ function Header() {
             MedGO <span className="text-muted">ImgFlow</span>
           </span>
         </div>
-        <span
-          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${
-            isCloudinaryConfigured ? 'border-success/30 text-success' : 'border-amber-500/30 text-amber-300'
-          }`}
-        >
-          <span className={`size-1.5 rounded-full ${isCloudinaryConfigured ? 'bg-success' : 'bg-amber-400'}`} />
-          {isCloudinaryConfigured ? 'Cloudinary conectado' : 'Cloudinary sin configurar'}
-        </span>
+        {cloudName !== undefined && (
+          <button
+            type="button"
+            onClick={onEditCredentials}
+            title="Cambiar credenciales"
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition hover:bg-surface-2 ${
+              cloudName ? 'border-success/30 text-success' : 'border-amber-500/30 text-amber-300'
+            }`}
+          >
+            <span className={`size-1.5 rounded-full ${cloudName ? 'bg-success' : 'bg-amber-400'}`} />
+            {cloudName ? `Cloudinary · ${cloudName}` : 'Conectar Cloudinary'}
+            <Settings2 className="size-3.5 opacity-70" />
+          </button>
+        )}
       </div>
 
       <h1 className="max-w-3xl text-4xl font-bold tracking-tight sm:text-6xl">

@@ -1,5 +1,7 @@
 # MedGO ImgFlow
 
+**Web:** https://bustxd.github.io/medgo-imgflow/
+
 Convierte un export HTML de Notion en un paquete listo para subir a la web, en un solo arrastre:
 
 1. **Lee** el `.zip` de Notion (o la carpeta descomprimida, o archivos sueltos). Si Notion envuelve el export en otro ZIP, también lo abre.
@@ -10,51 +12,40 @@ Convierte un export HTML de Notion en un paquete listo para subir a la web, en u
 6. **Reescribe** los `src`/`href` de los HTML para que apunten a los nuevos archivos (respetando `%20` y demás codificación).
 7. **Empaqueta** un ZIP con el mismo nombre, la misma estructura y los mismos nombres de archivo (solo cambia la extensión de las imágenes).
 
-Al terminar borra las copias temporales de Cloudinary para no gastar almacenamiento.
+Cada copia temporal en Cloudinary se borra apenas se descarga su versión convertida, para no gastar almacenamiento.
 
 El formato de salida es AVIF por defecto y se puede cambiar a WebP, JPG, JXL o PNG.
 
-## Requisitos
+## Uso
 
-- Node.js 20.9 o superior
-- Una cuenta gratuita de [Cloudinary](https://cloudinary.com)
+1. Crea una cuenta gratuita en [Cloudinary](https://cloudinary.com).
+2. Abre la web e ingresa tu **cloud name**, **API key** y **API secret** (Cloudinary → Settings → API Keys). La web prueba la conexión antes de guardarlas.
+3. Arrastra tu export de Notion y descarga el ZIP final.
 
-## Configuración
+### ¿Dónde quedan mis credenciales?
+
+Solo en tu navegador (`localStorage`, o `sessionStorage` si desmarcas "Recordar"). La web es 100% estática y no tiene servidor: la firma de cada subida se calcula en tu navegador y las imágenes van directo a Cloudinary. Puedes borrarlas cuando quieras con "Olvidar credenciales".
+
+## Desarrollo local
+
+Requiere Node.js 20.9 o superior.
 
 ```bash
 git clone https://github.com/BUSTxd/medgo-imgflow.git
 cd medgo-imgflow
 npm install
-cp .env.example .env.local
-```
-
-Rellena `.env.local` con los datos de **Cloudinary → Settings → API Keys**:
-
-```
-NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME="tu-cloud-name"
-NEXT_PUBLIC_CLOUDINARY_API_KEY="tu-api-key"
-CLOUDINARY_API_SECRET="tu-api-secret"
-NEXT_PUBLIC_CLOUDINARY_UPLOADS_FOLDER="medgo-imgflow"
-```
-
-Luego:
-
-```bash
 npm run dev
 ```
 
-y abre http://localhost:3000.
-
-## Cómo funciona
-
-Todo el procesamiento ocurre en el navegador. El servidor solo firma las subidas (`/api/sign`) y borra los archivos temporales (`/api/cleanup`); las imágenes viajan directo del navegador a Cloudinary.
+Cada push a `main` se publica automáticamente en GitHub Pages (`.github/workflows/deploy.yml`).
 
 | Archivo | Qué hace |
 | --- | --- |
 | `src/lib/pipeline.ts` | Orquesta las 7 etapas y emite el progreso a la UI |
 | `src/lib/notion.ts` | Lectura de ZIP/carpetas, plan de renombres y reescritura del HTML |
 | `src/lib/resize.ts` | Reducción por peso con búsqueda binaria de escala |
-| `src/lib/cloudinary.ts` | Subida firmada (basada en imgto.xyz) |
+| `src/lib/cloudinary.ts` | Subida firmada en el navegador y borrado por token |
+| `src/lib/credentials.ts` | Credenciales guardadas en el navegador |
 
 ## Créditos
 
