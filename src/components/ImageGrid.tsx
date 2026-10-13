@@ -95,7 +95,7 @@ function Card({ image, format }: { image: ImageItem; format: string }) {
 
         {image.status === 'done' && saved > 0 && (
           <span className="absolute bottom-2 left-2 rounded-md bg-black/60 px-1.5 py-0.5 font-mono text-xs font-semibold text-success backdrop-blur">
-            −{Math.round(saved * 100)}%
+            −{saved >= 0.99 ? (Math.floor(saved * 1000) / 10).toFixed(1) : Math.round(saved * 100)}%
           </span>
         )}
       </div>

@@ -13,6 +13,9 @@ interface ResultPanelProps {
   onReset: () => void;
 }
 
+// Nunca mostrar "100%": con ahorros >99% se muestra un decimal.
+const formatPercent = (value: number) => (value >= 99 ? (Math.floor(value * 10) / 10).toFixed(1) : Math.round(value).toString());
+
 export default function ResultPanel({ result, onReset }: ResultPanelProps) {
   const savedRatio = result.originalBytes > 0 ? 1 - result.finalBytes / result.originalBytes : 0;
   const totalRefs = result.htmlReports.reduce((sum, report) => sum + report.count, 0);
@@ -27,7 +30,7 @@ export default function ResultPanel({ result, onReset }: ResultPanelProps) {
       <div>
         <p className="text-sm text-muted">Ahorraste</p>
         <p className="text-gradient text-6xl font-bold tracking-tight">
-          <AnimatedNumber value={savedRatio * 100} />%
+          <AnimatedNumber value={savedRatio * 100} format={formatPercent} />%
         </p>
         <p className="mt-1 text-sm text-muted">
           {result.converted} {result.converted === 1 ? 'imagen convertida' : 'imágenes convertidas'}
